@@ -1,0 +1,198 @@
+---
+title: "Assignment4"
+author: "Cathy Zhuang"
+date: "2022-11-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+1. Write a memo of about 300 words on a reading (required or recommended) from “Network 
+Interventions” or “Networks and Predictions”. 
+ 
+The article titled “Network Interventions” by Thomas W. Valente describes and explains network interventions, types of network interventions, and when and where network interventions may be selected or applicable. First, network interventions use the social network data provided to produce social influence, “accelerate behavior change or improve organizational performance, enhance social change, and improve dissemination and diffusion of innovations.” There are four types of network interventions. The first network intervention is at the individual level, where individuals are selected as nodes based on how they are selected as “champions”. For example, members of the network can elect or nominate leaders, facilitating social change. The second type of network intervention is segmentation, where interventions are now directed at a group of nodes within the network rather than an individual. The third type of network intervention is induction, where interaction between peers creates a behavioral cascade through the network. Finally, the fourth type of network intervention is alteration, where the network itself is altered; one may remove or add nodes, remove or add ties, or restructure ties. The type of network intervention that one should select will be dependent on many factors, including the social and environmental context of the network as well as the type of behavior being disseminated. 
+I am particularly interested in network interventions in the context of the internet. Does network formation—and do network interventions—work differently or disseminate differently across the internet than if the network was comprised of real-life ties instead of online ties? The article mentioned that segmentation would be more difficult over social media unless an entire group adopts. Additionally, how would an induction method like word-of-mouth be different? Would it be easier to track since it is online? For other network interventions, how would one proceed with alteration of a network, such as re-wiring ties? 
+
+
+2. Weighted Network Analysis. Download “Manager_friends”, “Manager_advice”, 
+“Manager_report”, and the attribute data (“Manager_att”). The first three datasets include 
+networks for friendship, advice-seeking, and reporting ties. The attributes include the 
+managers age (in years), length of service or tenure (in years), level in the corporate 
+hierarchy (1 = CEO, 2 = Vice President, 3 = manager) and department (coded as 1, 2, 3, and 
+4). Add the three networks together to make a weighted network where each cell represents 
+the number of ties between two mangers. Conduct the following analyses. 
+
+```{r, warning=FALSE, message=FALSE}
+library(statnet)
+library(kableExtra)
+library(mvmeta)
+library(sna)
+library(keyplayer)
+library(NbClust)
+setwd("C:/Users/Cathy/Desktop/QTM 385 Network Analysis")
+```
+
+```{r}
+dat1 <- as.matrix(read.csv("Manager_friends.csv", header = T))
+dat2 <- as.matrix(read.csv("Manager_advice.csv", header = T))
+dat3 <- as.matrix(read.csv("Manager_report.csv", header = T))
+```
+
+```{r}
+data = dat1 + dat2 + dat3
+
+# Make network
+net <- network(data, matrix.type="adjacency", directed=T, ignore.eval=FALSE, names.eval="value")
+```
+
+
+1) Calculate the indegree, outdegree, betweenness, and closeness centralities of the 
+weighted network. Make a table to present the results.  
+
+```{r}
+indeg <- degree(net, cmode = "indegree", ignore.eval=FALSE)
+outdeg <- degree(net, cmode = "outdegree", ignore.eval=FALSE)
+close <- closeness(net, ignore.eval=FALSE, cmode="suminvundir")
+between <- betweenness(net, ignore.eval=FALSE, cmode="undirected")
+manager <- as.vector(1:21)
+
+tab1 <- cbind(manager, indeg, outdeg, close, between)
+colnames(tab1) <- c("Manager", "Indegree","Outdegree", "Closeness", "Betweenness")
+
+tab1 %>%  
+  kbl(caption = "Centrality Measures of Each Manager") %>%
+  kable_classic_2(full_width = F)
+```
+
+ 
+2) Plot the network with edge width proportional to the weights of the ties and vertices 
+colored by the department. 
+```{r}
+# Import and set attributes for nodes
+att <- read.csv("Manager_att.csv", header = T, row.names = 1 )
+set.vertex.attribute(net, "age", att$age )
+set.vertex.attribute( net, "tenure", att$tenure )
+set.vertex.attribute( net, "level", att$level )
+set.vertex.attribute( net, "dept", att$dept )
+
+plot(net, displaylabels = T, edge.lwd=net%e%'value', vertex.col=att$dept)
+
+```
+
+ 
+3) Fit an ERGM on the weighted network with covariate effects, mutuality, and transitivity. 
+Use a Poisson reference distribution. Interpret the results. 
+
+The basic average connection is the sum (estimate = -2.4926006). Compared to managers in level 1, managers in level 2 are more likely to make advising connections. Compared to managers in level 1, managers in level 3 are more likely to make advising connections. Managers in the same level are more likely to form advising ties. Managers in the same department are more likely to form advising ties. The odds for a tie to form a mutual relation is e^0.6763271 = 1.967 times the odds for the tie to form a non mutual relation. The odds for a  tie to form a triangle is e^0.9115460 = 2.488 times the odds for the tie to not form a triangle. These results are statistically significant.
+
+
+```{r, message = FALSE, warning = FALSE}
+# age, tenure, level, dept
+## Covariate Effects
+# nodeicov: receiver effects for continuous variables
+# nodeocov: sender effects for continuous variables
+# nodecov: connection effects for continuous variables - don't distinguish between directions
+# nodeifactor, nodeofactor, and nodefactor for categorical variables
+
+## Homophily
+# absdiff: difference for continuous variables
+# nodematch: being the same for binary/categorical variables
+
+model2 <- ergm(net~sum +nodecov("age")+ nodecov("tenure") + nodefactor("level")+ nodefactor("dept") + 
+                 absdiff("age") + absdiff("tenure") + nodematch("level") + nodematch("dept") +
+                 mutual + 
+              transitiveweights, response="value", reference=~Poisson)
+summary(model2)
+model2summary <- as.matrix(summary(model2)$coefficients[,c(1,2,4,5)])
+rownames(model2summary) <- c("Sum", "Age", "Tenure", "Level 2","Level 3", "Dept 2", "Dept 3", "Dept 4", "Age Difference","Tenure Difference", 
+                             "Same Level", "Same Dept",  
+                             "Mutuality","Transitivity")
+
+table2 <- model2summary %>%   
+  kbl(caption = "Summary of ERGM on weighted network") %>%
+  kable_classic_2(full_width = F)  %>%
+  pack_rows("Main Effects", 2, 8) %>%
+  pack_rows("Homophily", 9, 12)%>%
+  pack_rows("Network Structure", 13, 14)
+table2
+
+```
+
+ 
+3. Use the manager advising network to conduct the following analyses. 
+1) List the four managers with the highest individual indegree. Calculate the total number of 
+unique incoming connections they have in the network. 
+```{r}
+# Fnet <- network(dat2, directed = T)
+# 
+# ### Import and set attributes for nodes
+# set.vertex.attribute(Fnet, "age", att$age )
+# set.vertex.attribute( Fnet, "tenure", att$tenure )
+# set.vertex.attribute( Fnet, "level", att$level )
+# set.vertex.attribute( Fnet, "dept", att$dept )
+
+deg1 <- degree(dat2, cmode = "indegree") 
+names(deg1) <- seq(1, 21, 1)
+ids <- as.numeric(names(sort(deg1, decreasing=T)[1:4])) # Find the ids of the most central four individuals
+ids %>%  
+  kbl(caption = "Top 4 Managers with highest individual indegree") %>%
+  kable_classic_2(full_width = F)
+
+kpcent(dat2,ids,type="degree", cmode="indegree", method = "max") %>%
+  kbl(caption = "Total  number of unique incoming connections of the four managers") %>%
+  kable_classic_2(full_width = F)
+```
+
+ 
+2) List the four managers with the highest group indegree. Calculate the total number of 
+unique incoming connections they have in the network. 
+ 
+```{r}
+groupind <- kpset(dat2,size=4,type="degree", cmode="indegree", method = "max")
+groupind$keyplayers %>%  
+  kbl(caption = "Top 4 Managers with highest group indegree") %>%
+  kable_classic_2(full_width = F)
+
+groupind$centrality %>%  
+  kbl(caption = "Total  number of unique incoming connections of the four managers") %>%
+  kable_classic_2(full_width = F)
+
+```
+ 
+ 
+3) Divide the managers into groups using the edge-removal method and plot the network 
+with nodes colored by the groups. 
+```{r}
+library(igraph)
+Fnet <- graph.adjacency(dat2)
+g <- edge.betweenness.community(Fnet)
+plot(as.dendrogram(g))
+
+cbind(manager, g$membership)  %>%  
+  kbl(caption = "Group that Each Manager Belongs In, Edge-Removal Method") %>%
+  kable_classic_2(full_width = F)
+
+V(Fnet)$color=g$membership
+plot(Fnet)
+```
+
+4) Divide the managers into groups using the k-means method. How different are your 
+results from that you get using the edge-removal method? 
+
+We produced very different results from the k-means method versus the edge removal method. Our edge removal method produced 1 group, while our k-means method produced 3 groups. This could be because our network is directed, while the edge removal method treats the network as undirected, meaning that it treats the ties as mutual. 
+
+```{r}
+set.seed(385)
+# range from 2 to 8 groups
+nc <- NbClust(dat2, min.nc=2, max.nc=8, index = "kl", method="kmeans")
+nc
+
+cbind(manager, nc$Best.partition)  %>%  
+  kbl(caption = "Group that Each Manager Belongs In, k-means Method") %>%
+  kable_classic_2(full_width = F)
+```
+
+
+

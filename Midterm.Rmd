@@ -1,0 +1,374 @@
+---
+title: "QTM 385 Network Analysis Midterm"
+author: "Cathy Zhuang"
+date: "2022-10-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Section 1
+## Question 1
+Mouw’s article titled “Social Capital and Finding a Job: Do Contacts Matter?” explores the question of whether our job contacts actually influence labor market outcomes such as higher wages and “occupational prestige”. First, in the current literature before this article, there was not a consensus on whether or not job contacts influenced labor market outcomes. If job contacts really did not influence labor market outcomes, then labor market models in economics would be able to ignore the aspect of job contacts. Thus, Mouw tested the causal effects of job contacts on labor market outcomes by using “direct effects” models, “exogenous social capital” models, and “endogenous social capital” models. Through these models, Mouw concluded that there was no evidence that job contacts influence labor market outcomes. However, he cautions that this does not necessarily mean that contacts do not matter; rather, we are likely to overestimate the influence of job contacts on the labor market. Additionally, there are some discrepancies in the results, especially between single-firm studies and studies of workers. For example, while job applicants with connections are more likely to be hired, in the surveys of individual workers, the benefits do not seem to appear. Mouw attributes this to the idea of search models and that that perhaps well-connected workers receive higher wages regardless of whether they used contacts. I do not understand the explanation that Mouw supplies for this, as I do not see how it naturally follows that well-connected workers receive higher wages. Why would a more connected individual raise their reservation wages? Additionally, Mouw continues to use the idea of search models to suggest that “the relationship with wages…involves aspects of social capital not transmitted through networks.” What could he mean by this? What kinds of social capital are not transmitted through networks? By nature, shouldn’t social capital inherently include the existence of ties, and are therefore transmitted across or through networks? 
+
+## Question 2
+In an article titled “The Integrative Power of Civic Networks” authors Delia Baldassarri and Mario Diani explore the nature of civil society in democratic regimes. Civil society is an interesting subject because of the nature of network relations; it is a third sector of society distinct from government and business, with its own way of creating and maintaining ties. Additionally, it includes the family and private sphere, and it is mainly self-policed rather than having an entity like the government to oversee it. Most politicians would say it is generally ideal for a democratic society to have a robust civil society. However, Baldassarri and Diani found something interesting in their results, which was the following: beyond a certain point, increased participation from citizens in civil society may lead to social fragmentation into clusters. My question is, at what point will we see this social fragmentation and factionalism? Additionally, what implications do these results have for political parties that prioritize participation in civil society over bureaucracy and business? It seems like we should think about adding more structure into other sectors. Additionally, it was interesting to see how the structure and behavior of civil society as a whole change depending on voter cleavage. For example, when there is a deep cleavage, indicating that there are deep ideological differences between voter groups on certain issues, we see civil society fragment into clusters that are dense but do not interact as much with others. When there is less cleavage, civil society appears to be more centralized. Since this article was written in 2007, I wonder what the authors would have to say about the existing cleavages in U.S. politics right now, especially with the splintering of the Republican Party (fragmentation into clusters) or the striking down of Roe v. Wade (interference in civil society as well as deepening cleavage). Finally, is civil society created by structural democracy, or do you need to have a strong civil society to bring in democratic structure?
+
+# Section 2
+## Part 1:  Descriptive Analysis
+```{r, message = FALSE, warning = FALSE}
+library(statnet)
+library(kableExtra)
+library(dplyr)
+
+setwd("C:/Users/Cathy/Desktop/QTM 385 Network Analysis")
+data <- as.matrix(read.csv("co-advising.csv", header = T))
+
+### Create a network object
+Fnet <- network(data, directed = F)
+
+### Import and set attributes for nodes
+att <- read.csv("co-advising_att.csv", header = T, row.names = 1 )
+
+set.vertex.attribute( Fnet, "rank", att$Rank )
+set.vertex.attribute( Fnet, "tenure", att$Tenure )
+set.vertex.attribute( Fnet, "gender", att$Gender )
+set.vertex.attribute( Fnet, "quant", att$Quant )
+```
+
+
+### Question 1
+(1) Plot the network with nodes colored by “rank”. 
+```{r}
+plot.network(Fnet, displaylabels = T, boxed.labels = FALSE, vertex.cex = 0.6, label.cex = 1, 
+             vertex.col = att$Rank, label.col = "blue", edge.lwd = .5, edge.col = "gray50")
+```
+
+
+### Question 2
+(2) Make a table showing each actor’s degree, betweenness, closeness, and eigenvector 
+centrality. Show the correlations across these measures. Which three actors have the 
+highest centrality?  
+
+Overall, the three actors that have the highest centrality (at least for degree, closeness, and eigenvector centrality) are 1, 18, and 14. This means that professors 1, 18, and 14 are central in the connections of the network; they are the most connected among the professors (both in receiving co-advising ties and sending co-advising ties), can reach other professors the quickest, and are the ones most connected to important alters. The three actors that have the highest betweenness centrality are different (1, 18, 24).
+
+The correlations among these measures are positive and high, with betweenness centrality being slightly lower than the rest, but still positive. This means that a faculty member with a high centrality in one measure of centrality will most likely have high centrality in other measures of centrality. In other words, a faculty member with more ties will most likely have other ways that they are more connected to the network, such as being more connected to important alters. 
+```{r}
+degreecent <- degree(Fnet) # degree centrality
+closeness <- closeness(Fnet, cmode="suminvdir") # closeness centrality
+betweenness <- betweenness(Fnet) # betweenness centrality
+ecent <- evcent(Fnet) # eigenvector centrality
+
+
+tab1 <- cbind(degreecent, closeness, betweenness, ecent)
+colnames(tab1) <- c("Degree","Closeness", "Betweenness", "Eigenvector")
+tab1 %>%  
+  kbl(caption = "Centrality Measures of Each Faculty Member") %>%
+  kable_classic_2(full_width = F)
+
+cor(tab1) %>%  
+  kbl(caption = "Correlations Among Centrality Measures") %>%
+  kable_classic_2(full_width = F) # show correlations among centrality measures
+```
+
+
+### Question 3
+(3) Run a linear regression to predict the degree centrality using the faculty’s attributes. 
+
+When tenure decreases, degree centrality tends to increase (a faculty member has co-advised with more other faculty members). Gender has a similar negative influence on degree centrality. Rank and quant have more positive influences, meaning when rank increases and a professor tends to do more quantitative research, degree centrality also tends to increase (a faculty member has co-advised with more other faculty members). 
+
+```{r}
+regression <- cbind(degreecent, att)
+regression1 <- lm(degreecent ~ Rank + Tenure + Gender + Quant, data = regression)
+
+regression1$coefficients %>% 
+  kbl( caption = "Linear Regression of Degree Centrality Using Faculty Attributes") %>%
+  kable_classic_2(full_width = F)
+
+```
+
+
+### Question 4
+(4) List all the cliques with four or more members. 
+```{r}
+clique <- clique.census(Fnet)
+
+# See clique counts
+cliquecounts <- clique$clique.count[,1]
+
+# From the clique counts we can see that there are cliques with 4 and 5 members (cliques with 3 or more members)
+
+tab3 <- clique$cliques[c(4,5)]
+
+tab2 <- data.frame(clique$cliques[4])
+colnames(tab2) <- c(1:length(tab2))
+tab2  %>% 
+  kbl(caption = "Cliques with 4 Members") %>%
+  kable_classic_2(full_width = F)
+
+tab3 <- data.frame(clique$cliques[5])
+colnames(tab3) <- c(1:length(tab3))
+tab3  %>% 
+  kbl(caption = "Cliques with 5 Members") %>%
+  kable_classic_2(full_width = F)
+
+
+
+```
+
+
+### Question 5
+(5) Calculate the density, centralization, and transitivity of the network. Provide boxplots that 
+compare these statistics in the actual network with those in randomized networks.
+
+We see higher transitivity for the network than randomized networks. This means that in our network of faculty members, the proportion of transitive triangles out of possible triangles is higher than in randomized networks. The density of our network appears to be about the same as that of randomized networks; the proportion of all faculty member ties out of all possible faculty member ties is about the same as that of randomized networks. The centralization is overall higher compared to randomized networks but is not higher than all the results in randomized networks. This means overall the extent to which ties are concentrated is higher.
+```{r}
+# density
+density <- gden(Fnet)
+print(paste0("The density is ", density))
+
+# centralization
+cent <- centralization(Fnet, degree)
+print(paste0("The centralization is ", cent))
+
+# transitivity
+transitivity <- gtrans(Fnet)
+print(paste0("The transitivity is ", transitivity))
+
+
+##### Randomization test for network structures
+
+
+### Randomize the network and get the statistics/estimates
+## Fix the number of ties each actor sent 
+## But randomize to whom the ties are directed to
+## Vectors to store statistics from randomized networks
+trans <- NULL
+dens <- NULL
+centr <- NULL
+
+# Get the adjacency matrix
+FMat <- as.matrix(Fnet)
+K <- nrow(FMat)
+# number of randomization
+M <- 200
+
+for (i in 1:M) {
+  S <- sample(K)
+  RMat <- FMat[, S]
+  RNet <- network(RMat)
+
+  dens <- append(dens, gden(RNet))
+  centr <- append(centr, centralization(RNet, degree))
+  trans <- append(trans, gtrans(RNet))
+}
+
+boxplot(dens, ylim=c(0,1.2), main = "Density of Network Compared to Randomized Network"  )
+abline(h=density, col = "Red")
+# we see around the same density as randomized network
+
+boxplot(centr, ylim=c(0,1.2), main = "Centralization of Network Compared to Randomized Network"  )
+abline(h=cent, col = "Red")
+# we see higher centralization than randomized network
+
+boxplot(trans, ylim=c(0,0.5), main = "Transitivity of Network Compared to Randomized Network" )
+abline(h=transitivity, col = "Red")
+# we see higher transitivity than randomized network
+
+```
+
+
+
+### Question 6
+(6) Use “brokerage” and “rank” to calculate a brokerage index (i.e., the total number of times 
+an actor serving as a broker). Which three actors have the highest brokerage power? How 
+much does your brokerage index correlate with the betweenness centrality? 
+
+The actors that have the highest brokerage power are faculty members 1, 17, and 18. They served the most times as a broker total.
+Our brokerage index is positively correlated with betweenness at 0.85 overall. This means that the faculty members that are more important to the flow of the network tend to also have more brokerage power.
+
+```{r}
+sb <- brokerage(Fnet, att$Rank)
+# Observed brokerage scores, by vertex. t column shows the total roles.
+sb$raw.nli %>%
+  kbl(caption = "Brokerage Index") %>%
+  kable_classic_2(full_width = F)
+
+tab4 <- cbind(betweenness, sb$raw.nli)
+cor(tab4) %>%
+  kbl(caption = "Correlation of Brokerage Index with Betweenness Centrality") %>%
+  kable_classic_2(full_width = F)
+```
+
+
+
+### Question 7
+(7) What does structural equivalence mean here? Show the structural equivalence matrix. 
+Based on the structural equivalence matrix, present a hierarchical clustering of the actors. 
+
+In  this case, two faculty members are considered structurally equivalent if they are connected to other faculty members in a similar way--they serve on the same dissertation committees(are connected) in a similar manner.
+
+```{r}
+se <- sedist (Fnet, method = "euclidean") # use euclidean distance
+se[upper.tri(se)] <- ""
+se <- as.data.frame(se)
+se <- cbind(a = c(1:nrow(se)), se)
+colnames(se) <- c(0:(ncol(se)-1))
+
+se  %>%
+  kbl(caption = "Structural Equivalence Matrix") %>%
+  kable_classic_2(full_width = F)
+
+# Hierarchical clustering of network positions
+eq <- equiv.clust (Fnet, method="euclidean") # use euclidean distance
+
+plot(eq, main="Hierarchical clustering of network positions", xlab = "", sub="")
+```
+
+
+
+### Question 8
+(8)  Divide the actors into three blocks based on structural equivalence. Present the density 
+matrix of the three blocks. 
+
+The proportion of connections across Block 3 and Block 1 is greater than that in Block 2 and Block 1. The proportion of connections within Block 2 is greater than the proportion of connections within Block 1. 
+
+```{r, fig.width=20,fig.height=10}
+# This approach maximizes structural equivalence within blocks.
+# divide into blocks, let's do 3 blocks
+block <- blockmodel(Fnet, eq, k = 3 )
+
+
+# block modeling
+plot(block, displaylabels = F, xlab="", ylab="", main="Blockgrouping", sub="")
+
+block$block.model %>%   
+  kbl(caption = "Density Matrix of 3 Blocks") %>%
+  kable_classic_2(full_width = F)
+  
+# gives you density table, also tells you which manager belongs to which blocks
+```
+
+
+## Part 2:  ERGM
+Fit ERGMs on the co-advising network. 
+
+### Question 1
+(1) The first ERGM should include only covariate effects (e.g., main effects and homophily 
+effects). Explain why you include these effects. 
+
+I included covariate effects for all the faculty attributes--rank, tenure, quant, and gender. I included these because I believe that each influences the ties created in the co-advising network. I believe there are connection effects for rank and tenure because whether someone is a full professor or not can influence a student's decision to have them serve on their dissertation committee. I believe there are also connection effects for quant as the professors a student selects for a committee is dependent on the type of research they are doing. There may also be gender connection effects as well. I also included considerations of homophily for all the attributes. For example, those who work on more quantitative research may serve on the same co-advising boards as others who work on more quantitative research rather than qualitative research. I did not use any directionality because this is an undirected network. 
+
+```{r}
+## Covariate Effects
+# nodeicov: receiver effects for continuous variables
+# nodeocov: sender effects for continuous variables
+# nodecov: connection effects for continuous variables - don't distinguish between directions
+# nodeifactor, nodeofactor, and nodefactor for categorical variables
+
+## Homophily
+# absdiff: difference for continuous variables
+# nodematch: being the same for binary/categorical variables
+
+
+model1 <- ergm(Fnet ~ edges + nodecov("rank") + nodecov("tenure")  + nodefactor("quant") + nodefactor("gender") +
+               + absdiff("tenure") + absdiff("rank") + nodematch("quant") + nodematch("gender"))
+
+summary(model1)
+
+model1summary<- as.data.frame(summary(model1)$coef)[,c(1,2,4,5)]
+model1summary <- model1summary[c(2:9, 1),]
+model1summary[nrow(model1summary) + 2,] <- NA
+rownames(model1summary) <- c("Rank", "Tenure", "Quant", "Gender", "Tenure Difference", "Rank Difference", "Same Quant", "Same Gender", "Edges", 
+                             "Transitivity", "Two-Path")
+
+table1<- model1summary %>%   
+  kbl(caption = "Summary of Model 1") %>%
+  kable_classic_2(full_width = F) %>%
+  pack_rows("Main Effects", 1, 4) %>%
+  pack_rows("Homophily", 5, 8)%>%
+  pack_rows("Endogenous Network Formation", 9, 11)
+
+table1
+
+
+```
+
+
+
+### Question 2
+(2) The second ERGM should additionally include a number of endogenous tie formation 
+processes. Explain why you include these additional terms. 
+
+I included two additional terms: gwesp and gwdsp. I chose gwesp because it is transitivity, and will help us find the odds for a tie to form a triangle versus the odds for a tie to not form a triangle. I also chose gwdsp, which is a term to control two-path, so we can see how likely ties are to form open triangles. I did not use gwidegree or gwodegree, because not only is this an undirected network, but also because I think that professors do not serve on dissertation committees solely for preferential attachment or differential sociality reasons.
+```{r, message = FALSE, warning = FALSE}
+
+# gw stands for geometrically weighted
+# gwidegree is the term for describing preferential attachment - the tendency for a person to send a tie to a popular other (person who gets lot of ties)
+# gwodegree is differential sociality - you prefer to send ties to a person who already sends out a lot of ties
+# gwesp is transitivity
+# gwdsp is a term to control two-path 
+
+model2 <- ergm(Fnet ~ edges + nodecov("rank") + nodecov("tenure")  + nodefactor("quant") + nodefactor("gender") +
+               + absdiff("tenure") + absdiff("rank") + nodematch("quant") + nodematch("gender")
+               + gwesp(0.1, fixed = TRUE) + gwdsp(0.1, fixed = TRUE),
+               control = control.ergm(MCMLE.maxit = 300, MCMC.burnin=10000, MCMC.interval=200, seed = 178 ))
+
+summary(model2)
+
+model2summary <- as.data.frame(summary(model2)$coef)[,c(1,2,4,5)] 
+rownames(model2summary) <- c("Edges", "Rank", "Tenure", "Quant", "Gender", "Tenure Difference", "Rank Difference", "Same Quant", "Same Gender", 
+                             "Transitivity","Two-Path")
+model2summary <- model2summary[c(2:9, 1, 10:11),] 
+
+table2 <- model2summary %>%   
+  kbl(caption = "Summary of Model 2") %>%
+  kable_classic_2(full_width = F)%>%
+  pack_rows("Main Effects", 1, 4) %>%
+  pack_rows("Homophily", 5, 8) %>%
+  pack_rows("Endogenous Network Formation", 9,11)
+
+table2
+```
+
+
+
+### Question 3
+(3) Make a table to present the estimates. Report which model is better and why. Check the 
+goodness-of-fit of the better model. Interpret the results of the better model. 
+
+From these results, model 2 has the smaller AIC, making it a better model for that reason.
+
+As for the goodness of fit:
+The solid lines represent observed statistics - features of observed networks.
+The dashed lines represent simulated statistics- the features of simulated networks.
+That solid lines are within the 95% confidence intervals of the simulated lines indicates model convergence.
+In the model statistics graph, the solid lines are on average contained within the dashed lines or shaded areas.The solid line in the degree graph sometimes goes out of the dashed lines and shaded areas, but mainly stays within. The same goes for the edge-wise shared partners and minimum geodesic distance. Given that, on average, the solid lines are mainly within the 95% confidence intervals of the simulated lines, our model converged.
+
+Interpretation of model 2 (better model):
+Faculty members with higher rank are more likely to form ties (serve on dissertation committees together). Faculty members with higher tenure are less likely to form ties. The negative coefficient on "edges" indicates that the network is sparser than expected. Faculty members in the same fields of research (quantitative or qualitative) are more likely to form ties with one another. The odds for a tie to form between faculty members of the same field is e^0.78576 = 2.19 times the odds for a tie to form between faculty members of a different field. The positive coefficient on gwesp indicates transitivity in tie formations. The odds for a tie to form a triangle is about e^2.83715 = 17.1 times the odds for the tie not to form a triangle.
+
+
+```{r, fig.width=30,fig.height=10}
+AIC <- rbind(AIC(model1), AIC(model2))
+AIC  %>%   
+  kbl(caption = "AIC of Model 1 (top) and Model 2 (bottom)") %>%
+  kable_classic_2(full_width = F)
+
+table3 <- cbind(model1summary, model2summary)
+table3 %>% 
+  kbl(caption = "Summary of Models") %>%
+  kable_classic_2(full_width = F)%>%
+  pack_rows("Main Effects", 1, 4) %>%
+  pack_rows("Homophily", 5, 8) %>%
+  pack_rows("Endogenous Network Formation", 9,11)%>%
+  add_header_above(c(" " = 1, "Model 1" = 4, "Model 2" = 4))
+
+gof2 <- gof(model2)
+par(mfrow=c(1,5))
+plot(gof2)
+```
+
+

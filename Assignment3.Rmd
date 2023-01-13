@@ -1,0 +1,283 @@
+---
+title: "Assignment3"
+author: "Cathy Zhuang"
+date: "2022-10-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Part 1
+Write a memo of about 300 words on a reading (required or recommended) from “Dynamic Network Analysis” or “Meta Network Analysis”. 
+
+The article titled “Network Ecology and Adolescent Social Structure” by Daniel A. McFarland, James Moody, David Diehl, Jeffrey A. Smith, Reuben J. Thomas explores how environmental factors affect different networks within a particular place. Namely, it was interesting because previous studies thought that if different networks were comprised of the same type of people, the same hierarchies should arise, but this does not seem to be the case. How can we explain global variations if the network is explained by the same tie formation mechanisms? The study took two approaches: the ecological approach and the non-ecological approach. The ecological approach explores the dynamic interactions between the social environment and network structure. The non-ecological approach treats the network itself as the most important social context and uses global network features as the combination of the individuals. The findings were that both selective and elective aspects contribute to segregation; for example, the school assigning classrooms (selective) leads to segregation, as does self-assigning classrooms (elective). Additionally, as the classroom settings become freer, more of the natural bases of association, such as homophily, begin to arise. However, if classroom settings become more socially controlled, these natural bases of association begin to decrease. These findings have implications for school and classroom culture as well as the physical environment that contributes to network formation. For example, school desegregation will lead to homophily across the school but heterophily the classroom.  
+
+I’m interested to see network ecology and social structure on higher levels other than classrooms. For example, why do schools in the same school district have different network structures? What are the environmental factors that can have an impact on these structures? What effect does having different teachers and different classmates have on adolescent social structure? How about the way the classroom is physically structured?
+
+
+# Part 2
+## Question 1
+Specify and estimate a stochastic actor-oriented model that aims to separate peer selection from peer influence regarding drinking behavior. The model should have at least two parts. One reflects network dynamics and the other drinking behavior dynamics. Assess whether your model converges or not.
+
+We can assess model convergence by seeing if there is less than 10% of the T's that are over 0.1 or -0.1. Since none of the T's are over 0.1 or -0.1, we can say that our model converged.
+
+```{r, warning=FALSE, message=FALSE}
+library(RSiena)
+library(statnet)
+library(kableExtra)
+library(mvmeta)
+
+#change working directory
+setwd("C:/Users/Cathy/Desktop/QTM 385 Network Analysis")
+
+##### Importing data #######
+friend.data.w1 <- as.matrix(read.table("s50-network1.dat"))
+friend.data.w2 <- as.matrix(read.table("s50-network2.dat"))
+friend.data.w3 <- as.matrix(read.table("s50-network3.dat"))
+drink <- as.matrix(read.table("s50-alcohol.dat"))
+sport <- as.matrix(read.table("s50-sport.dat")) # time-varying covariate
+age <- as.matrix(read.csv("s50-age.csv", header = T)) # time invariant covariate - doesn't change over time
+```
+
+
+```{r, message=FALSE}
+##### set up the networks #############
+net1 <- as.network(friend.data.w1)
+net2 <- as.network(friend.data.w2)
+net3 <- as.network(friend.data.w3)
+
+par( mfrow = c( 1, 3 ) )
+coordin <- plot( net1 ) 
+plot( net2, coord = coordin ) # fix nodes to the coordinates of the first network
+plot( net3, coord = coordin )
+
+##### preparing data for RSiena ####
+
+# Create network object
+# The integers in the dim() here refer to the number of nodes (senders=50, receivers=50) and the number of waves/timepoints (3 waves)
+friendship <- sienaNet(array( c( friend.data.w1, friend.data.w2, friend.data.w3 ), dim = c( 50, 50, 3 ) ) )  
+
+# Create behavior object
+drinking <- sienaNet( drink, type = "behavior" ) # dependent variable
+
+# Create a time varying covariate of smoking
+sport <- varCovar( sport )
+
+# Create a time constant covariate  
+age <- coCovar( as.vector(age) )
+
+# Create dataset
+mydata <- sienaDataCreate( friendship, drinking, sport, age ) 
+
+
+#################################################
+#######Coevolution of networks and behavior######
+#################################################
+
+# Model specification for coevolution . Will get some of the default effects
+myeff <- getEffects(mydata)
+
+### Network dynamics
+# Covariate effects
+# ego - sender, alt - receiver, sim - homophily
+
+myeff <- includeEffects(myeff, egoX, altX, simX, interaction1="sport")
+myeff <- includeEffects(myeff, egoX, altX, simX, interaction1="age")
+
+# Local network structure
+# transtrip - transitivity, inpopsqrt - preferential attachment (indegree popularity. ppl that have a lot of ties already receive more ties later on) but the square root
+# outpopsqrt - outdegree popularity sowhether ppl who send out a lot of ties receive ties later on
+myeff <- includeEffects(myeff, transTrip, inPopSqrt, outPopSqrt)
+
+### To distinguish effect on creation of new ties (creation) from effect of maintaining old ties (endowment).
+# myeff <- includeEffects(myeff, egoX, altX, simX, type = "creation", interaction1="smoke")
+# myeff <- includeEffects(myeff, egoX, altX, simX, type = "endow", interaction1="smoke")
+
+# Effect of behavior on network (e.g., selection of friends based on homophilous behavior)
+myeff <- includeEffects(myeff, egoX, altX, simX, interaction1="drinking")
+
+# Interaction between behavior and network
+# Drinkers are more likely to form mutual ties?
+# myeff <- includeInteraction( myeff, egoX, recip, interaction1 = "drinking" )
+
+
+### Behavior dynamics
+# Peer influence and network effects
+myeff<-includeEffects(myeff, name="drinking", avAlt, indeg, outdeg, interaction1="friendship")
+
+# Covariate effects
+myeff<-includeEffects(myeff, name="drinking", effFrom, interaction1="sport") # play sports and drink a lot?
+myeff<-includeEffects(myeff, name="drinking", effFrom, interaction1="age") # older kids morer likely to drink?
+
+
+
+### Define and estimate the model
+mymodel <- sienaModelCreate(useStdInits = TRUE, projname = 'drinking', n3 = 1000, seed = 385) # proj name is project name. useStdInits automatically gives the guess to start...
+# ...simulating the network. and use 1000 sequences of networks
+
+# estimate. answer1.  The silent is to see the cooking process. See the messages in batch. nbrNodes depends on the computing nodes in your computer. 
+ans1 <- siena07(mymodel, data=mydata, effects=myeff, silent = T, batch=TRUE, nbrNodes=2, useCluster=TRUE)
+
+# sqrt the thing to get std error
+est <- cbind(ans1$theta, sqrt(diag(ans1$covtheta)), ans1$tstat)
+rname <- myeff$effectName[myeff$include==T]
+rownames(est) <- rname
+colnames(est) <- c("Estimate", "SE", "T")
+
+est %>%   
+  kbl(caption = "SAOM Results for Co-Evolution of Friendships and Drinking") %>%
+  kable_classic_2(full_width = F)%>%
+  pack_rows("Network Dynamics", 1, 16) %>%
+  pack_rows("Behavior Dynamics", 17, 25) 
+
+
+```
+
+## Question 2
+If the model converges well, are there reciprocity, transitivity, and preferential attachment in friendship formation over time? Does drinking lead a person to become more popular over time? Are drinkers more likely to become friends with other drinkers over time? Do people who play sports become more popular and are they more likely to form friends with one another? 
+
+Reciprocity: There is reciprocity in friendship formation over time. The odds for ties to become mutual over time is e^2.6457351 = 14.093 times the odds for ties not to become mutual over time. This estimate is significant (estimate/SE > 2).
+
+Transitivity: There is transitivity in friendship formation over time. The odds for ties to form triangles over time is e^0.7352005 = 2.0859 times the odds for times not to form triangles over time. This estimate is significant.
+
+Preferential attachment: Those who receive lots of ties become slightly more popular over time as indicated by the positive coefficient on indegree - popularity (sqrt). This estimate is not significant.
+
+Does drinking lead a person to become more popular over time: Not really. The odds drinking leading a person to become more popular over time is e^-0.0096775 = 0.99 times the odds of drinking leading a person to not become popular. This estimate is not significant.
+
+Are drinkers more likely to become friends with other drinkers over time: Yes. The odds of drinkers becoming friends with other drinkers over time is e^1.3424936 = 3.83 times the odds of drinkers becoming friends with non-drinkers over time. 
+
+Do people who play sports become more popular and are they more likely to form friends with one another: The positive coefficient on sport alter indicates that people who play sports become more popular. The positive coefficient on sport similarity indicates that they are more likely to form friends with one another. These estimates are not significant. 
+
+
+## Question 3
+Do you find evidence for peer influence in drinking? Are popular subjects more likely to drink over time? What is the effect of playing sport on drinking? 
+
+The odds of drinking behavior becoming similar to friends is e^6.7336652 = 840 times the odds of drinking behavior not becoming similar to friends. However, this estimate is not significant. Since the estimate is not significant, there is no evidence for peer influence in drinking. The negative coefficient on behavior drinking indegree suggests that popular subjects are less likely to drink over time. The positive coefficient on drinking: effect from sport suggests that those that play sports are more likely to drink, but this estimate is not statistically significant.
+ 
+## Question 4
+Fit an ERGM on each wave of the friendship network data. Use univariate meta regression (the random effects model) to combine the results. List the results for each wave and the combined results in a table. Interpret the combined results. Are there coefficients significantly different across waves? What are the differences between this approach and the SAOM approach to analyzing dynamic networks? [Hint: This approach allows tie formation patterns to differ across time and assumes endogenous tie formation processes occur within-wave instead of cross-wave. Because of the latter, I generally do not recommend using this approach to model dynamic networks.] 
+
+Overall, across all time points of the friendship network data:
+The positive coefficient on drinking behavior in main effects suggests that those that drink more are more likely to make friends. This is statistically significant. The negative coefficient on age suggests that those that are older are less likely to make friends. This is not statistically significant. The negative coefficient on sport suggests that those who play sports regularly are less likely to make friends. This is not statistically significant. For homophily effects, the negative coefficient on drinking difference suggests homophily; those that drink are more likely to make friends. This is not statistically significant. The positive coefficient on age difference suggests that those of different ages are more likely to make friends. This is not statistically significant. The positive coefficient on same sport behavior suggests that those that have the same sport behavior are more likely to make friends. This is not statistically significant. The negative coefficient on edges suggests that the network is sparser, but this is not statistically significant.
+
+There are no coefficients significantly different across waves, as indicated by the high Q values. 
+
+The difference between using ERGM and meta-regression instead of SAOM is that perhaps ERGM can give one more flexibility about the terms they can choose. Additionally, meta-analysis is applicable to both ERGM and SAOM. However, ERGM might be very slow for big networks, and also assumes that estimates apply to everywhere in the network. As discussed in class, one approach to solve this is to cut large networks into smaller blocks according to some structure, and then feed ERGM on the ties between each pair of blocks. Then, compress the blocks by stacking and using meta analysis.
+
+```{r}
+### Network 1
+# Set vertex attributes of network 1
+set.vertex.attribute(net1, "drink", drink[,1] )
+set.vertex.attribute(net1, "sport", sport[,1] )
+set.vertex.attribute(net1, "age", as.vector(age) )
+
+## Covariate Effects
+# nodeicov: receiver effects for continuous variables
+# nodeocov: sender effects for continuous variables
+# nodecov: connection effects for continuous variables - don't distinguish between directions
+# nodeifactor, nodeofactor, and nodefactor for categorical variables
+
+## Homophily
+# absdiff: difference for continuous variables
+# nodematch: being the same for binary/categorical variables
+
+model1 <- ergm(net1 ~ edges + nodecov("drink") + nodecov("age")  + nodefactor("sport") 
+               + absdiff("drink") + absdiff("age") + nodematch("sport"))
+
+model1summary<- as.data.frame(summary(model1)$coef)[,c(1,2,4,5)]
+model1summary <- model1summary[c(2:7, 1),]
+rownames(model1summary) <- c("Drinking Behavior", "Age", "Sport Behavior", "Drinking Difference", "Age Difference", "Same Sport Behavior", "Edges")
+
+table1<- model1summary %>%   
+  kbl(caption = "Summary of Model at Timepoint 1") %>%
+  kable_classic_2(full_width = F) %>%
+  pack_rows("Main Effects", 1, 3) %>%
+  pack_rows("Homophily", 4, 6)%>%
+  pack_rows("Endogenous Network Formation", 7, 7)
+table1
+
+###  Network 2
+set.vertex.attribute(net2, "drink", drink[,2] )
+set.vertex.attribute(net2, "sport", sport[,2] )
+set.vertex.attribute(net2, "age", as.vector(age) )
+
+model2 <- ergm(net2 ~ edges + nodecov("drink") + nodecov("age")  + nodefactor("sport") 
+               + absdiff("drink") + absdiff("age") + nodematch("sport"))
+
+model2summary<- as.data.frame(summary(model2)$coef)[,c(1,2,4,5)]
+model2summary <- model2summary[c(2:7, 1),]
+rownames(model2summary) <- c("Drinking Behavior", "Age", "Sport Behavior", "Drinking Difference", "Age Difference", "Same Sport Behavior", "Edges")
+
+table2<- model2summary %>%   
+  kbl(caption = "Summary of Model at Timepoint 2") %>%
+  kable_classic_2(full_width = F) %>%
+  pack_rows("Main Effects", 1, 3) %>%
+  pack_rows("Homophily", 4, 6)%>%
+  pack_rows("Endogenous Network Formation", 7, 7)
+table2
+
+###  Network 3
+set.vertex.attribute(net3, "drink", drink[,3] )
+set.vertex.attribute(net3, "sport", sport[,3] )
+set.vertex.attribute(net3, "age", as.vector(age) )
+
+model3 <- ergm(net3 ~ edges + nodecov("drink") + nodecov("age")  + nodefactor("sport") 
+               + absdiff("drink") + absdiff("age") + nodematch("sport"))
+
+model3summary<- as.data.frame(summary(model3)$coef)[,c(1,2,4,5)]
+model3summary <- model3summary[c(2:7, 1),]
+rownames(model3summary) <- c("Drinking Behavior", "Age", "Sport Behavior", "Drinking Difference", "Age Difference", "Same Sport Behavior", "Edges")
+
+table3<- model3summary %>%   
+  kbl(caption = "Summary of Model at Timepoint 3") %>%
+  kable_classic_2(full_width = F) %>%
+  pack_rows("Main Effects", 1, 3) %>%
+  pack_rows("Homophily", 4, 6)%>%
+  pack_rows("Endogenous Network Formation", 7, 7)
+table3
+
+# Prepare for meta analysis
+
+est1 <- as.matrix(summary(model1)$coefficients)[,c(1,2)]
+cov1 <- as.matrix(model1$covar)
+
+est2 <- as.matrix(summary(model2)$coefficients)[,c(1,2)]
+cov2 <- as.matrix(model2$covar)
+
+est3 <- as.matrix(summary(model3)$coefficients)[,c(1,2)]
+cov3 <- as.matrix(model3$covar)
+
+est <- cbind(est1, est2, est3)
+theta <- est[,c(1,3,5)]
+var <- est[,c(2,4, 6)]^2
+
+## Random effects
+umeta <- list()
+K <- nrow(theta)
+tab2 <- NULL
+for (i in 1:K) {
+  umeta[[i]] <- mvmeta(theta[i,]~1, S=var[i,], method="reml") # random effects from maximum likelihood = reml
+  out <- c(summary(umeta[[i]])$coef[,c(1,2,4)], summary(umeta[[i]])$qstat$pvalue)
+  tab2 <- rbind(tab2, out)
+}
+rownames(tab2) <- rownames(est)
+colnames(tab2)[4] <- "Q"
+#write.csv(tab2, "tab2.csv", na="", row.names = TRUE)
+
+tab2
+tab2 <- tab2[c(2:7, 1),]
+rownames(tab2) <- c("Drinking Behavior", "Age", "Sport Behavior", "Drinking Difference", "Age Difference", "Same Sport Behavior", "Edges")
+
+table4<- tab2 %>%   
+  kbl(caption = "Aggregated ERGM Results on Friendship Networks") %>%
+  kable_classic_2(full_width = F) %>%
+  pack_rows("Main Effects", 1, 3) %>%
+  pack_rows("Homophily", 4, 6)%>%
+  pack_rows("Endogenous Network Formation", 7, 7)
+table4
+
+
+```
+

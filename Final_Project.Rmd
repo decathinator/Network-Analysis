@@ -1,0 +1,347 @@
+---
+title: "Final_Project"
+author: "Cathy Zhuang"
+date: "2022-11-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+bba: 0 no, 1 yes
+level: 1 analyst, 2 team lead, 3 director, 4 exec
+housing: 0 on-campus, 1 off-campus
+
+
+```{r, message = FALSE, warning = FALSE}
+library(statnet)
+library(kableExtra)
+library(dplyr)
+library(mvmeta)
+library(sna)
+library(keyplayer)
+library(NbClust)
+
+setwd("C:/Users/Cathy/Desktop/QTM 385 Network Analysis")
+data <- as.matrix(read.csv("club_network.csv", header = T))
+
+### Create a network object
+Fnet <- network(data, directed = T)
+
+### Import and set attributes for nodes
+att <- read.csv("club_att.csv", header = T, row.names = 1 )
+att$year <- 5 - (att$year - 2022)
+att$bba <- att$bba - 1
+att$housing <- att$housing - 1
+
+set.vertex.attribute( Fnet, "year", att$year )
+set.vertex.attribute( Fnet, "bba", att$bba)
+set.vertex.attribute( Fnet, "level", att$level )
+set.vertex.attribute( Fnet, "housing", att$housing )
+```
+
+Plot the network with nodes colored by “Level”.
+```{r}
+plot.network(Fnet, displaylabels = T, boxed.labels = FALSE, vertex.cex = 0.6, label.cex = 1, 
+             vertex.col = att$level, label.col = "blue", edge.lwd = .5, edge.col = "gray50")
+```
+Make a table showing each actor’s degree, betweenness, closeness, and eigenvector 
+centrality. Show the correlations across these measures. 
+```{r}
+indeg <- degree(Fnet, cmode = "indegree") # indegree centrality
+outdeg <- degree(Fnet, cmode = "outdegree") # outdegree centrality
+
+closeness <- closeness(Fnet, cmode="suminvdir") # closeness centrality
+betweenness <- betweenness(Fnet) # betweenness centrality
+ecent <- evcent(Fnet) # eigenvector centrality
+member <- as.vector(1:length(data[,1]))
+
+
+
+tab1 <- cbind(member, indeg, outdeg, closeness, betweenness, ecent)
+colnames(tab1) <- c("Member","In-Degree","Out-Degree","Closeness", "Betweenness", "Eigenvector")
+tab1 %>%  
+  kbl(caption = "Centrality Measures of Each Club Member") %>%
+  kable_classic_2(full_width = F)
+
+tab2 <- cbind(indeg, outdeg, closeness, betweenness, ecent)
+colnames(tab2) <- c("In-Degree","Out-Degree","Closeness", "Betweenness", "Eigenvector")
+cor(tab2) %>%  
+  kbl(caption = "Correlations Among Centrality Measures") %>%
+  kable_classic_2(full_width = F) # show correlations among centrality measures
+```
+List the four members with the highest individual indegree. Calculate the total number of 
+unique incoming connections they have in the network. 
+```{r}
+deg1 <- degree(data, cmode = "indegree") 
+names(deg1) <- seq(1, 27, 1)
+ids <- as.numeric(names(sort(deg1, decreasing=T)[1:4])) # Find the ids of the most central four individuals
+ids %>%  
+  kbl(caption = "Top 4 Members with highest individual indegree") %>%
+  kable_classic_2(full_width = F)
+
+kpcent(data,ids,type="degree", cmode="indegree", method = "max") %>%
+  kbl(caption = "Total  number of unique incoming connections of the fourmembers") %>%
+  kable_classic_2(full_width = F)
+```
+List the four members with the highest group indegree. Calculate the total number of 
+unique incoming connections they have in the network. 
+```{r}
+groupind <- kpset(data,size=4,type="degree", cmode="indegree", method = "max")
+groupind$keyplayers %>%  
+  kbl(caption = "Top 4 Members with highest group indegree") %>%
+  kable_classic_2(full_width = F)
+
+groupind$centrality %>%  
+  kbl(caption = "Total  number of unique incoming connections of the four members") %>%
+  kable_classic_2(full_width = F)
+```
+
+Run a linear regression to predict the in-degree centrality using the members' attributes. 
+
+```{r}
+regression <- cbind(indeg, att)
+regression1 <- lm(indeg ~ year + bba + level + housing, data = regression)
+
+regression1$coefficients %>% 
+  kbl( caption = "Linear Regression of In-Degree Centrality Using Member Attributes") %>%
+  kable_classic_2(full_width = F)
+```
+List all the cliques with 3 or more members. 
+```{r}
+clique <- clique.census(Fnet)
+
+# See clique counts
+cliquecounts <- clique$clique.count[,1]
+cliquecounts
+
+# From the clique counts we can see that there are cliques with 4 and 5 members (cliques with 3 or more members)
+
+tab3 <- clique$cliques[c(3,4,5)]
+
+tab5 <- data.frame(clique$cliques[3])
+colnames(tab5) <- c(1:length(tab5))
+tab5  %>% 
+  kbl(caption = "Cliques with 3 Members") %>%
+  kable_classic_2(full_width = F)
+
+tab6 <- data.frame(clique$cliques[4])
+colnames(tab6) <- c(1:length(tab6))
+tab6 %>% 
+  kbl(caption = "Cliques with 4 Members") %>%
+  kable_classic_2(full_width = F)
+
+tab7 <- data.frame(clique$cliques[5])
+colnames(tab7) <- c(1:length(tab7))
+tab7  %>% 
+  kbl(caption = "Cliques with 5 Members") %>%
+  kable_classic_2(full_width = F)
+
+```
+Calculate the mutuality, density, centralization, and transitivity of the network. Provide boxplots that 
+compare these statistics in the actual network with those in randomized networks.
+```{r}
+# mutuality
+mutuality <- grecip(Fnet, measure = "edgewise")
+print(paste0("The mutuality is ", mutuality))
+
+# density
+density <- gden(Fnet)
+print(paste0("The density is ", density))
+
+# centralization
+cent <- centralization(Fnet, degree)
+print(paste0("The centralization is ", cent))
+
+# transitivity
+transitivity <- gtrans(Fnet)
+print(paste0("The transitivity is ", transitivity))
+
+
+##### Randomization test for network structures
+
+
+### Randomize the network and get the statistics/estimates
+## Fix the number of ties each actor sent 
+## But randomize to whom the ties are directed to
+## Vectors to store statistics from randomized networks
+mut <- NULL
+trans <- NULL
+dens <- NULL
+centr <- NULL
+
+# Get the adjacency matrix
+FMat <- as.matrix(Fnet)
+K <- nrow(FMat)
+# number of randomization
+M <- 200
+
+for (i in 1:M) {
+  S <- sample(K)
+  RMat <- FMat[, S]
+  RNet <- network(RMat)
+  
+  mut <- append(mut, grecip(RNet, measure = "edgewise"))
+  dens <- append(dens, gden(RNet))
+  centr <- append(centr, centralization(RNet, degree))
+  trans <- append(trans, gtrans(RNet))
+}
+
+boxplot(mut, ylim=c(0,1.2), main = "Mutuality of Network Compared to Randomized Network"  )
+abline(h=density, col = "Red")
+
+
+boxplot(dens, ylim=c(0,1.2), main = "Density of Network Compared to Randomized Network"  )
+abline(h=density, col = "Red")
+
+
+boxplot(centr, ylim=c(0,1.2), main = "Centralization of Network Compared to Randomized Network"  )
+abline(h=cent, col = "Red")
+
+
+boxplot(trans, ylim=c(0,0.5), main = "Transitivity of Network Compared to Randomized Network" )
+abline(h=transitivity, col = "Red")
+
+```
+
+Use “brokerage” and “level” to calculate a brokerage index (i.e., the total number of times 
+an actor serving as a broker). Which three actors have the highest brokerage power? How 
+much does your brokerage index correlate with the betweenness centrality? 
+
+```{r}
+sb <- brokerage(Fnet, att$level)
+# Observed brokerage scores, by vertex. t column shows the total roles.
+sb$raw.nli %>%
+  kbl(caption = "Brokerage Index") %>%
+  kable_classic_2(full_width = F)
+
+tab8 <- cbind(betweenness, sb$raw.nli)
+cor(tab8) %>%
+  kbl(caption = "Correlation of Brokerage Index with Betweenness Centrality") %>%
+  kable_classic_2(full_width = F)
+```
+
+
+What does structural equivalence mean here? Show the structural equivalence matrix. 
+Based on the structural equivalence matrix, present a hierarchical clustering of the actors. 
+
+In  this case, two members are considered structurally equivalent if they are connected to other  members in a similar way.
+
+```{r}
+se <- sedist (Fnet, method = "euclidean") # use euclidean distance
+se[upper.tri(se)] <- ""
+se <- as.data.frame(se)
+se <- cbind(a = c(1:nrow(se)), se)
+se <- as.data.frame(apply(se, 2, as.numeric))
+se <- se %>%
+  mutate(across(where(is.numeric), round, digits=1))
+colnames(se) <- c(0:(ncol(se)-1))
+
+
+se  %>%
+  kbl(caption = "Structural Equivalence Matrix") %>%
+  kable_classic_2(full_width = F)
+
+# Hierarchical clustering of network positions
+eq <- equiv.clust (Fnet, method="euclidean") # use euclidean distance
+
+plot(eq, main="Hierarchical clustering of network positions", xlab = "", sub="")
+```
+
+Divide the actors into three blocks based on structural equivalence. Present the density 
+matrix of the three blocks. 
+```{r, fig.width=20,fig.height=10}
+# This approach maximizes structural equivalence within blocks.
+# divide into blocks, let's do 3 blocks
+block <- blockmodel(Fnet, eq, k = 3 )
+
+
+# block modeling
+plot(block, displaylabels = F, xlab="", ylab="", main="Blockgrouping", sub="")
+
+block$block.model %>%   
+  kbl(caption = "Density Matrix of 3 Blocks") %>%
+  kable_classic_2(full_width = F)
+  
+# gives you density table, also tells you which manager belongs to which blocks
+```
+# ERGM
+
+```{r}
+## Covariate Effects
+# nodeicov: receiver effects for continuous variables
+# nodeocov: sender effects for continuous variables
+# nodecov: connection effects for continuous variables - don't distinguish between directions
+# nodeifactor, nodeofactor, and nodefactor for categorical variables
+
+## Homophily
+# absdiff: difference for continuous variables
+# nodematch: being the same for binary/categorical variables
+
+# year, bba, level, housing
+
+
+model1 <- ergm(Fnet ~ nodeicov("year") + nodeocov("year") + nodefactor("bba") + nodeicov("level") + nodeocov("level") + nodefactor("housing")
+               + absdiff("year") + nodematch("bba") + absdiff("level") + nodematch("housing") + edges)
+
+summary(model1)
+
+model1summary<- as.data.frame(summary(model1)$coef)[,c(1,2,4,5)]
+rownames(model1summary) <- c("Year (Receiver)", "Year (Sender)", "BBA", "Level (Sender)", "Level (Receiver)", "Housing", "Year Difference", "Same Major (BBA)", "Different Levels", "Same Housing", "Edges")
+
+table1<- model1summary %>%   
+  kbl(caption = "Summary of Model 1") %>%
+  kable_classic_2(full_width = F) %>%
+  pack_rows(index = c("Main Effects" = 6, "Homophily" = 4, "Endogenous Network  Formation" = 1))
+
+table1
+```
+
+Had to force MPLE and assume naive logistic regression, AIC came out better though. Choose model 2
+
+```{r}
+# gw stands for geometrically weighted
+# gwidegree is the term for describing preferential attachment - the tendency for a person to send a tie to a popular other (person who gets lot of ties)
+# gwodegree is differential sociality - you prefer to send ties to a person who already sends out a lot of ties
+# gwesp is transitivity
+# gwdsp is a term to control two-path 
+
+model2 <- ergm(Fnet ~ nodeicov("year") + nodeocov("year") + nodefactor("bba") + nodeicov("level") + nodeocov("level") + nodefactor("housing")
+               + absdiff("year") + nodematch("bba") + absdiff("level") + nodematch("housing") + edges + mutual
+               + gwidegree(0.1, fixed = TRUE) + gwodegree(0.1, fixed = TRUE) + gwesp(0.1, fixed = TRUE) + gwdsp(0.1, fixed = TRUE), estimate = "MPLE", 
+               control = control.ergm(MCMLE.maxit = 300, MCMC.burnin=10000, MCMC.interval=200, seed = 178 ))
+
+summary(model2)
+
+model2summary <- as.data.frame(summary(model2)$coef)[,c(1,2,4,5)] 
+rownames(model2summary) <- c("Year (Receiver)", "Year (Sender)", "BBA", "Level (Sender)", "Level (Receiver)", "Housing", 
+                             "Year Difference", "Same Major (BBA)", "Different Levels", "Same Housing", 
+                             "Edges", "Mutuality", "Preferential Attachment", "Differential Sociality", "Transitivity", "Two-Path")
+ 
+
+table2<- model2summary %>%   
+  kbl(caption = "Summary of Model 2") %>%
+  kable_classic_2(full_width = F) %>%
+  pack_rows(index = c("Main Effects" = 6, "Homophily" = 4, "Endogenous Network  Formation" = 6))
+
+table2
+```
+
+Goodness of fit
+```{r, fig.width=40,fig.height=20}
+gof2 <- gof(model2)
+par(mfrow=c(1,5))
+plot(gof2)
+```
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,117 @@
+---
+title: "QTM 385 Assignment 1"
+author: "Cathy Zhuang"
+date: "2022-09-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(statnet)
+library(Hmisc)
+setwd("C:/Users/Cathy/Desktop/QTM 385 Network Analysis")
+data <- as.matrix(read.csv("Manager_advice.csv", header = T))
+```
+
+# Question 1
+In an article titled "Birds of a Feather: Homophily in Social Networks", authors Miller McPherson, Lynn Smith-Lovin, and James M Cook explore the different ways in which homophily manifests itself in social networks. Homophily can be distinguished as baseline homophily or inbreeding homophily, with baseline homophily coming from demography, and with inbreeding homophily coming from that which one is not born with, as well as those above opportunities. The authors then explore patterns of homophily in race and ethnicity, sex and gender, age, religion, education, occupation, social class, and attitudes. An aspect that I found surprising was how strong homophilic ties exist for race and ethnicity compared to other patterns of homophily, such as sex/gender and age. Additionally, I did not realize that patterns of homophily in religion were strong amongst the Jewish community, as I assumed the article would talk about how homophily would be strong among communities such as the Mormons or the Amish. 
+
+I wonder how the internet has changed these patterns of homophily. With technology and the rise of the internet, it has become easier to connect with people without geography being a factor. For example, in aspects of baseline homophily—such as race—technology and the internet have become factors in bridging communities, like how the Chinese community often uses WeChat in the U.S. to make friends and organize events. I think that with the internet, we can now form network connections that would not have existed or would not have been close before. Additionally, the internet has also allowed people to actively seek out others who have the same interests as them. Communities on the internet can also shape one’s beliefs. Is the internet itself, then, a new source of homophily, or is it simply a means of homophily?
+
+# Question 2
+## Part 1
+(1) Make a network graph showing the advising relations among these managers. 
+
+At a glance, the network of managers seems tightly connected, with some managers in the center and some in the periphery. No manager is standalone, which means there is at least one connection for every manager.
+
+```{r}
+### Create a network object
+Fnet <- network(data, directed = T)
+
+### Plot the network
+plot.network(Fnet, displaylabels = T, boxed.labels = FALSE, vertex.cex = 0.6, label.cex = 1, 
+             label.col = "blue", edge.lwd = .5, edge.col = "gray50")
+```
+
+## Part 2
+(2) Calculate the degree, closeness, betweenness, and eigenvector centralities. 
+[Optional: Show the correlations among these centrality measures.] 
+
+The most connections that a manager has is 24. (Degree centrality)
+
+Managers vary in their closeness, with some being closer to others. Manager 15 has the highest closeness.
+
+Manager 18 has the highest betweenness, meaning he serves as a bridge for most other managers.
+
+Manager 15 has the highest eigenvector centrality, meaning he is connected to more important alters.
+```{r}
+degree <- degree(Fnet) # degree centrality
+closeness <- closeness(Fnet, cmode="suminvdir") # closeness centrality
+betweenness <- betweenness(Fnet) # betweenness centrality
+ecent <- evcent(Fnet) # eigenvector centrality
+
+tab1 <- cbind(degree, closeness, betweenness, ecent)
+tab1
+
+cor(tab1) # show correlations among centrality measures
+```
+
+## Part 3
+(3) What portion of the dyads have mutual ties?  
+
+If we include null ties as mutual ties, then the proportion of mutual ties is 0.51. If we exclude null ties, the proportion of mutual ties is around 0.47. This meanst that around half of the ties in the network are mutual ties, i.e. managers mutually seek advice from each other.
+
+```{r}
+# include null ties
+reciprocity <- grecip(Fnet)
+reciprocity
+
+# ignore null ties
+reciprocity1 <- grecip(Fnet, measure = "edgewise")
+reciprocity1
+```
+
+## Part 4
+(4) List the cliques with three or more members. 
+
+There are 11 cliques with three members and 5 cliques with four members. The most cliques have three members.
+
+```{r}
+clique <- clique.census(Fnet)
+
+# See clique counts
+tab2 <- clique$clique.count[,1]
+
+# From the clique counts we can see that there are cliques with 3 and 4 members (cliques with 3 or more members)
+
+tab3 <- clique$cliques[c(3,4)]
+tab3
+```
+
+
+## Part 5
+(5) Calculate the density, centralization, and transitivity of the network. 
+
+Density: Around 46% of all possible ties are realized in the network.
+
+Centralization: With a centralization of around 0.35, there is more equality than inequality in centrality.
+
+Transitivity: Around 67% of triads are transitive triads.
+
+```{r}
+# density
+density <- gden(Fnet)
+print(paste0("The density is ", density))
+
+# centralization
+cent <- centralization(Fnet, degree)
+print(paste0("The centralization is ", cent))
+
+# transitivity
+transitivity <- gtrans(Fnet)
+print(paste0("The transitivity is ", transitivity))
+
+```
+
+
